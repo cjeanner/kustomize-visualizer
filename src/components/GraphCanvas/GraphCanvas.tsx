@@ -216,11 +216,11 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({ graph, onNodeSelect })
 
             const layout = cyRef.current.layout({
                 name: 'dagre',
-                rankDir: 'TB',
+                rankDir: 'BT',
                 nodeSep: 100,
                 rankSep: 150,
                 padding: 50,
-                animate: false
+                animate: true
             } as any);
 
             layout.run();

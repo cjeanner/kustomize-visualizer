@@ -172,8 +172,8 @@ export class DependencyResolver {
         if (targetNode) {
             edges.push({
                 id: `edge-${this.edgeCounter++}`,
-                source: sourceNode.id,
-                target: targetNode.id,
+                source: targetNode.id,
+                target: sourceNode.id,
                 type: edgeType,
                 label: this.extractLabel(reference)
             });
