@@ -1,6 +1,6 @@
 import { GitHubService } from './GitHubService';
 import { GitLabService } from './GitLabService';
-import type { KustomizeNode, KustomizationFile } from '../types/kustomize.types';
+import type { KustomizeNode, KustomizationYaml} from '../types/kustomize.types';
 
 type GitProvider = 'github' | 'gitlab' | 'local';
 
@@ -56,7 +56,7 @@ export class GitService {
   /**
    * Scan un repository distant (GitHub ou GitLab)
    */
-  async scanRemoteRepository(url: string, parseKustomization: (content: string) => Promise<KustomizationFile>): Promise<KustomizeNode[]> {
+  async scanRemoteRepository(url: string, parseKustomization: (content: string) => Promise<KustomizationYaml>): Promise<KustomizeNode[]> {
     const nodes: KustomizeNode[] = [];
   
     try {
@@ -124,12 +124,13 @@ export class GitService {
   
           // Parser
           const kustomization = await parseKustomization(content);
+          const detectedType = this.determineNodeType(displayPath);
   
           // Créer le nœud
           const node: KustomizeNode = {
             id: `node-${this.nodeCounter++}`,
             path: displayPath,
-            type: this.determineNodeType(displayPath),
+            type: ((detectedType === 'base' || detectedType === 'overlay') ? 'resource' : detectedType),
             kustomizationContent: kustomization,
             isRemote: true,
             remoteUrl: url,

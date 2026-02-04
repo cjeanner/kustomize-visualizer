@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import * as yaml from 'yaml';
 import type { KustomizeNode, KustomizationYaml } from '../types/kustomize.types';
 
 interface GitUrlComponents {
@@ -82,7 +82,7 @@ export class GitCrawler {
         try {
             kustomizationUrl = this.ensureKustomizationYaml(normalizedUrl);
             const content = await this.fetchFileContent(kustomizationUrl);
-            kustomization = yaml.load(content) as KustomizationYaml;
+            kustomization = yaml.parse(content) as KustomizationYaml;
             console.log(`  ✓ kustomization.yaml chargé`);
         } catch (error) {
             console.warn(`  ⚠️ Impossible de charger kustomization.yaml:`, error);
@@ -443,7 +443,7 @@ export class GitCrawler {
         }
 
         try {
-            const directoryPath = await window.electron.selectDirectory();
+            const directoryPath = await window.electron.chooseDirectory();
 
             if (!directoryPath) {
                 throw new Error('Aucun répertoire sélectionné');
@@ -451,7 +451,7 @@ export class GitCrawler {
 
             console.log(`  📂 Répertoire: ${directoryPath}`);
 
-            const files = await window.electron.findKustomizationFiles(directoryPath);
+            const files = await window.electron.scanDirectory(directoryPath);
             console.log(`  ✓ ${files.length} fichier(s) trouvé(s)`);
 
             const nodes: KustomizeNode[] = [];
@@ -462,7 +462,7 @@ export class GitCrawler {
                 const content = await window.electron.readFile(filePath);
 
                 try {
-                    const kustomization = yaml.load(content) as KustomizationYaml;
+                    const kustomization = yaml.parse(content) as KustomizationYaml;
 
                     const relativePath = filePath
                         .replace(directoryPath, '')
