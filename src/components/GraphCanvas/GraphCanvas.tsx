@@ -266,7 +266,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({ graph, onNodeSelect })
         {/* Overlays si graphe présent */}
         {graph && (
             <>
-            <GraphLegend />
             {/* Boutons d'export */}
             <div style={{
                 position: 'absolute',
@@ -276,6 +275,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({ graph, onNodeSelect })
                 gap: '10px',
                 zIndex: 1000
             }}>
+            <GraphLegend />
             <button 
             onClick={() => cyRef.current && exportToPNG(cyRef.current)}
             style={{
@@ -304,6 +304,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({ graph, onNodeSelect })
             📥 Mermaid
             </button>
             </div>
+
 
             <div style={{
                 position: 'absolute',
