@@ -7,6 +7,9 @@ docker-compose.yml
 # Markdown
 *.md
 
+# Screenshots (documentation only, not needed in image)
+screenshots
+
 # Git
 .git
 .gitignore

@@ -15,6 +15,23 @@ A web application to visualize and explore Kustomize overlay structures in GitOp
   - `GET /api/v1/graph/{id}` — fetch the analyzed graph.
   - `GET /api/v1/node/{graphID}/{nodeID}` — fetch node details.
 
+## Screenshots
+
+| |
+|:--:|
+| ![Main view](screenshots/kustomize-visualizer-01.png) |
+| *Main view — enter a repo URL and explore the overlay graph* |
+
+| |
+|:--:|
+| ![Graph exploration](screenshots/kustomize-visualizer-02.png) |
+| *Graph exploration — bases, overlays, and resources* |
+
+| |
+|:--:|
+| ![Node details](screenshots/kustomize-visualizer-03.png) |
+| *Node details — inspect resources and manifests* |
+
 ## Prerequisites
 
 - **Go 1.24+** (see `go.mod`)
