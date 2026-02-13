@@ -366,6 +366,21 @@ button:disabled {
     line-height: 1.5;
 }
 
+/* CA bundle warning */
+#ca-bundle-warning {
+    position: absolute;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fff8e6;
+    border: 1px solid #f0c030;
+    color: #8a6d00;
+    padding: 12px 24px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 50;
+}
+
 /* Graph error */
 #graph-error {
     position: absolute;

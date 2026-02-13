@@ -225,6 +225,8 @@ class App {
         this.errorMessage = document.getElementById('error-message');
         this.graphErrorDiv = document.getElementById('graph-error');
         this.graphErrorMessage = document.getElementById('graph-error-message');
+        this.caBundleWarningDiv = document.getElementById('ca-bundle-warning');
+        this.caBundleWarningMessage = document.getElementById('ca-bundle-warning-message');
         this.analyzeBtn = document.getElementById('analyze-btn');
         this.backBtn = document.getElementById('back-btn');
         this.fitBtn = document.getElementById('fit-btn');
@@ -467,8 +469,24 @@ class App {
                 this.showNodeDetails(nodeData);
             });
             setupBuildModal(this);
+            this.updateCABundleUI(graphData);
         } catch (error) {
             this.showGraphError(error.message);
+        }
+    }
+
+    updateCABundleUI(graphData) {
+        const hasValidBundle = graphData.ca_bundle && graphData.ca_bundle_valid !== false;
+        this.downloadCABundleBtn.disabled = !hasValidBundle;
+        this.downloadCABundleBtn.title = hasValidBundle
+            ? 'Download CA bundle for Argo CD'
+            : 'CA bundle unavailable';
+
+        if (graphData.ca_bundle_valid === false && graphData.ca_bundle_error) {
+            this.caBundleWarningMessage.textContent = graphData.ca_bundle_error;
+            this.caBundleWarningDiv.classList.remove('hidden');
+        } else {
+            this.caBundleWarningDiv.classList.add('hidden');
         }
     }
 
@@ -520,6 +538,7 @@ class App {
         this.formSection.classList.remove('hidden');
         this.hideSidebar();
         this.hideGraphError();
+        this.caBundleWarningDiv?.classList.add('hidden');
 
         if (this.cy) {
             this.cy.destroy();

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"log"
 	"net/url"
 	"sort"
@@ -104,9 +105,57 @@ func (c *Collector) CollectAndAttach(graph *types.Graph) {
 		_ = pem.Encode(&buf, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 	}
 
-	graph.CABundle = buf.String()
+	pemBundle := buf.String()
+	if err := validateBundleForHosts(pemBundle, hosts); err != nil {
+		graph.CABundleValid = false
+		graph.CABundleError = fmt.Sprintf("CA bundle validation failed: %v", err)
+		log.Printf("CA bundle: validation failed for hosts: %v", err)
+		return
+	}
+
+	graph.CABundle = pemBundle
 	graph.CABundleExpires = time.Now().Add(c.ttl).Format(time.RFC3339)
-	log.Printf("CA bundle: collected %d unique cert(s) from %d host(s)", len(uniqueCerts), len(hosts))
+	graph.CABundleValid = true
+	log.Printf("CA bundle: collected and validated %d unique cert(s) from %d host(s)", len(uniqueCerts), len(hosts))
+}
+
+// validateBundleForHosts verifies that the PEM bundle can be used as the sole trust store
+// for a TLS connection to each host. Runs validation in parallel.
+func validateBundleForHosts(pemBundle string, hosts []string) error {
+	pool := x509.NewCertPool()
+	for block, rest := pem.Decode([]byte(pemBundle)); block != nil; block, rest = pem.Decode(rest) {
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return fmt.Errorf("parse bundle: %w", err)
+		}
+		pool.AddCert(cert)
+	}
+
+	var firstErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			cfg := &tls.Config{RootCAs: pool, ServerName: h}
+			conn, err := tls.Dial("tcp", h+":443", cfg)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("%s: %w", h, err)
+				}
+				mu.Unlock()
+				return
+			}
+			conn.Close()
+		}(host)
+	}
+	wg.Wait()
+	return firstErr
 }
 
 // uniqueHostsFromGraph extracts unique TLS hosts from the graph's BaseURLs.

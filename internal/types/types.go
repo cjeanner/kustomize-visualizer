@@ -13,6 +13,11 @@ type Graph struct {
 	CABundle string `json:"ca_bundle,omitempty"`
 	// CABundleExpires is when the CA bundle is considered stale (RFC3339).
 	CABundleExpires string `json:"ca_bundle_expires,omitempty"`
+	// CABundleValid is true when the bundle was verified by TLS handshake for all hosts.
+	// When false, the bundle is not attached and CABundleError explains why.
+	CABundleValid bool `json:"ca_bundle_valid,omitempty"`
+	// CABundleError is set when bundle validation failed (e.g. host unreachable or cert mismatch).
+	CABundleError string `json:"ca_bundle_error,omitempty"`
 }
 
 // Element can be a node or an edge
