@@ -1,0 +1,74 @@
+---
+description: Git commit message format and required trailers (tools, co-author)
+alwaysApply: true
+---
+
+# Git Commit Rules
+
+When creating a new commit (at the user's request), follow these rules.
+
+## Commit Message Format (Best Practices)
+
+- **Subject line**: 50 characters or less. Use imperative mood ("Add feature" not "Added feature"). Capitalize and omit trailing period.
+- **Blank line**: Exactly one blank line between subject and body.
+- **Body**: Wrap at 72 characters. Explain what and why, not just how.
+- **No merge/Squash-style prefixes** in the subject unless the project convention requires it (e.g. no "WIP:", "fix:" unless agreed).
+
+Example:
+
+```
+Add validation for kustomization names
+
+Reject empty or invalid names before rendering to avoid confusing
+errors in the graph. Validation runs on load and on name change.
+```
+
+## Required Trailers (at the end of the message)
+
+After the body, add a blank line, then these trailers in order:
+
+1. **Tooling and AI**  
+   One or more lines describing:
+   - Tool(s) in use (e.g. Cursor, CLI, IDE)
+   - Model(s) in use (e.g. model name/version if applicable)
+   - AI agent(s) in use (e.g. agent or assistant name/type)
+
+   Use a consistent label, e.g. `Tool:` / `Models:` / `AI agent(s):` or a single `Generated-with:` line. Example:
+
+   ```
+   Tool: Cursor
+   Models: claude-sonnet-4, gpt-4o
+   AI agent(s): Auto (Cursor)
+   ```
+
+2. **Co-author for Cursor**  
+   Add a standard Git co-author trailer so Cursor is credited:
+
+   ```
+   Co-authored-by: Cursor <cursor@cursor.com>
+   ```
+
+   If the project or user uses a different Cursor co-author identity (name/email), use that instead.
+
+## Full Example
+
+```
+Add validation for kustomization names
+
+Reject empty or invalid names before rendering to avoid confusing
+errors in the graph. Validation runs on load and on name change.
+
+Tool: Cursor
+Models: claude-sonnet-4
+AI agent(s): Auto (Cursor)
+
+Co-authored-by: Cursor <cursor@cursor.com>
+```
+
+## Checklist Before Committing
+
+- [ ] Subject ≤ 50 characters, imperative, capitalized, no trailing period
+- [ ] Single blank line between subject and body
+- [ ] Body wrapped at 72 characters
+- [ ] Trailers at the end: tool, model(s), AI agent(s)
+- [ ] Co-authored-by: Cursor (or project convention) at the very end
