@@ -27,6 +27,7 @@ var webFS embed.FS
 
 func main() {
 	portFlag := flag.String("port", "", "HTTP listener port (default 3000, or set PORT env)")
+	enableLocal := flag.Bool("enable-local", false, "Enable local repository browsing (paths under $HOME)")
 	flag.Parse()
 
 	portStr := *portFlag
@@ -44,9 +45,10 @@ func main() {
 	store := storage.NewMemoryStorage()
 	caCollector := cacert.NewCollector(cacert.DefaultTTL)
 	webRoot, _ := fs.Sub(webFS, "web")
-	r := server.New(store, webRoot, caCollector)
+	cfg := &server.Config{LocalEnabled: *enableLocal, Port: port}
+	r := server.New(store, webRoot, caCollector, cfg)
 
-	addr := ":" + strconv.Itoa(port)
+	addr := ":" + strconv.Itoa(cfg.Port)
 	log.Printf("🚀 Server listening on http://localhost%s", addr)
 	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatalf("server: %v", err)

@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ import (
 func TestNew(t *testing.T) {
 	store := storage.NewMemoryStorage()
 	webRoot := fstestMapFS{} // minimal fs.FS for router
-	r := New(store, webRoot, nil)
+	r := New(store, webRoot, nil, nil)
 	if r == nil {
 		t.Fatal("New() returned nil")
 	}
@@ -25,7 +26,7 @@ func TestNew(t *testing.T) {
 func TestServer_GetGraph_NotFound(t *testing.T) {
 	store := storage.NewMemoryStorage()
 	webRoot := fstestMapFS{}
-	r := New(store, webRoot, nil)
+	r := New(store, webRoot, nil, nil)
 
 	// Use a valid UUID that is not in the store → 404
 	validMissingID := uuid.New().String()
@@ -41,7 +42,7 @@ func TestServer_GetGraph_NotFound(t *testing.T) {
 func TestServer_GetGraph_InvalidID(t *testing.T) {
 	store := storage.NewMemoryStorage()
 	webRoot := fstestMapFS{}
-	r := New(store, webRoot, nil)
+	r := New(store, webRoot, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph/not-a-uuid", nil)
 	rec := httptest.NewRecorder()
@@ -58,7 +59,7 @@ func TestServer_GetGraph_Found(t *testing.T) {
 	g := &types.Graph{ID: graphID, Created: "2025-01-01", Elements: []types.Element{}}
 	store.SaveGraph(g)
 	webRoot := fstestMapFS{}
-	r := New(store, webRoot, nil)
+	r := New(store, webRoot, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph/"+graphID, nil)
 	rec := httptest.NewRecorder()
@@ -75,7 +76,7 @@ func TestServer_GetGraph_Found(t *testing.T) {
 func TestServer_GetCABundle_NotFound(t *testing.T) {
 	store := storage.NewMemoryStorage()
 	webRoot := fstestMapFS{}
-	r := New(store, webRoot, nil)
+	r := New(store, webRoot, nil, nil)
 
 	validMissingID := uuid.New().String()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph/"+validMissingID+"/ca-bundle", nil)
@@ -93,7 +94,7 @@ func TestServer_GetCABundle_NoBundle(t *testing.T) {
 	g := &types.Graph{ID: graphID, Created: "2025-01-01", Elements: []types.Element{}}
 	store.SaveGraph(g)
 	webRoot := fstestMapFS{}
-	r := New(store, webRoot, nil)
+	r := New(store, webRoot, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph/"+graphID+"/ca-bundle", nil)
 	rec := httptest.NewRecorder()
@@ -117,7 +118,7 @@ func TestServer_GetCABundle_Found(t *testing.T) {
 	}
 	store.SaveGraph(g)
 	webRoot := fstestMapFS{}
-	r := New(store, webRoot, nil)
+	r := New(store, webRoot, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph/"+graphID+"/ca-bundle", nil)
 	rec := httptest.NewRecorder()
@@ -134,6 +135,37 @@ func TestServer_GetCABundle_Found(t *testing.T) {
 	}
 	if rec.Body.String() != bundle {
 		t.Errorf("body = %q, want %q", rec.Body.String(), bundle)
+	}
+}
+
+func TestServer_Browse_POST(t *testing.T) {
+	store := storage.NewMemoryStorage()
+	webRoot := fstestMapFS{}
+	cfg := &Config{LocalEnabled: true, Port: 3000}
+	r := New(store, webRoot, nil, cfg)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot get home dir")
+	}
+
+	body := `{"path":"` + home + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/browse", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("POST /browse status = %d, want 200. body=%s", rec.Code, rec.Body.String())
+	}
+	ct := rec.Header().Get("Content-Type")
+	if ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	// Response must be a JSON array (possibly empty). json.Encoder adds trailing newline.
+	raw := strings.TrimSpace(rec.Body.String())
+	if len(raw) < 2 || raw[0] != '[' || raw[len(raw)-1] != ']' {
+		t.Errorf("response is not a JSON array: %s", raw)
 	}
 }
 

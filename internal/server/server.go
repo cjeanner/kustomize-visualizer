@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -31,6 +32,13 @@ const (
 	maxBuildBodyBytes   = 32 * 1024  // 32 KB for build (tokens only)
 )
 
+// Config holds optional server configuration.
+// nil is safe; LocalEnabled defaults to false, Port defaults to 3000 (caller's responsibility).
+type Config struct {
+	LocalEnabled bool // Enable local repository browsing (paths under $HOME)
+	Port         int  // HTTP listener port (e.g. for config API; main uses this for ListenAndServe)
+}
+
 // AnalyzeRequest is the JSON body for POST /api/v1/analyze.
 type AnalyzeRequest struct {
 	URL         string `json:"url"`
@@ -48,14 +56,24 @@ type AnalyzeResponse struct {
 // New builds a chi router with API and static file routes.
 // webRoot is the embedded web filesystem (e.g. fs.Sub(embedFS, "web")).
 // caCollector collects CA certs from overlay hosts for Argo CD; may be nil to skip.
-func New(store storage.Storage, webRoot fs.FS, caCollector *cacert.Collector) *chi.Mux {
+// cfg may be nil; LocalEnabled is false when cfg is nil.
+func New(store storage.Storage, webRoot fs.FS, caCollector *cacert.Collector, cfg *Config) *chi.Mux {
+	localEnabled := cfg != nil && cfg.LocalEnabled
+	port := 3000
+	if cfg != nil && cfg.Port > 0 {
+		port = cfg.Port
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(setContentType)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Post("/analyze", handleAnalyze(store, caCollector))
+		r.Get("/config", handleConfig(localEnabled, port))
+		r.Get("/browse", handleBrowse(localEnabled))
+		r.Post("/browse", handleBrowse(localEnabled))
+		r.Post("/analyze", handleAnalyze(store, caCollector, localEnabled))
 		r.Get("/graph/{id}", handleGetGraph(store))
 		r.Get("/graph/{id}/ca-bundle", handleGetCABundle(store))
 		r.Get("/node/{graphID}/{nodeID}", handleGetNode(store))
@@ -67,6 +85,81 @@ func New(store storage.Storage, webRoot fs.FS, caCollector *cacert.Collector) *c
 	})
 
 	return r
+}
+
+func handleBrowse(localEnabled bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("browse: %s %s", r.Method, r.URL.Path)
+		if !localEnabled {
+			respondError(w, http.StatusForbidden, "Local browsing is not enabled")
+			return
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Cannot determine home directory")
+			return
+		}
+		homeAbs, _ := filepath.Abs(home)
+		homeResolved, err := filepath.EvalSymlinks(homeAbs)
+		if err != nil {
+			homeResolved = homeAbs
+		}
+		homePrefix := filepath.Clean(homeResolved) + string(filepath.Separator)
+
+		pathParam := r.URL.Query().Get("path")
+		if pathParam == "" && r.Method == http.MethodPost {
+			r.Body = http.MaxBytesReader(w, r.Body, maxAnalyzeBodyBytes)
+			var body struct{ Path string }
+			if json.NewDecoder(r.Body).Decode(&body) == nil && body.Path != "" {
+				pathParam = strings.TrimSpace(body.Path)
+			}
+		}
+		if pathParam == "" {
+			pathParam = homeResolved
+		} else {
+			pathParam = filepath.Clean(pathParam)
+			pathResolved, err := filepath.EvalSymlinks(pathParam)
+			if err != nil {
+				pathResolved = pathParam
+			}
+			pathParam = pathResolved
+			// Must be under $HOME
+			if pathParam != homeResolved && !strings.HasPrefix(pathParam+string(filepath.Separator), homePrefix) {
+				respondError(w, http.StatusForbidden, "Path must be under $HOME")
+				return
+			}
+		}
+		entries, err := os.ReadDir(pathParam)
+		if err != nil {
+			if os.IsNotExist(err) {
+				respondError(w, http.StatusNotFound, "Path does not exist")
+				return
+			}
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		dirs := make([]string, 0, len(entries))
+		for _, e := range entries {
+			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+				full := filepath.Join(pathParam, e.Name())
+				dirs = append(dirs, full)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(dirs); err != nil {
+			log.Printf("browse: encode error: %v", err)
+		}
+	}
+}
+
+func handleConfig(localEnabled bool, port int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"local_enabled": localEnabled,
+			"port":          port,
+		})
+	}
 }
 
 func setContentType(next http.Handler) http.Handler {
@@ -100,7 +193,7 @@ func setContentType(next http.Handler) http.Handler {
 	})
 }
 
-func handleAnalyze(store storage.Storage, caCollector *cacert.Collector) http.HandlerFunc {
+func handleAnalyze(store storage.Storage, caCollector *cacert.Collector, localEnabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxAnalyzeBodyBytes)
 		var req AnalyzeRequest
@@ -108,41 +201,65 @@ func handleAnalyze(store storage.Storage, caCollector *cacert.Collector) http.Ha
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
-		if err := validation.ValidateAnalyzeURL(req.URL); err != nil {
-			respondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
 
-		log.Printf("Analyzing repository: %s", truncateForLog(req.URL, 256))
-
-		repoInfo, err := repository.DetectRepository(req.URL, "")
-		if err != nil {
-			respondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		log.Printf("✅ Detected: %s", repoInfo.String())
-
+		var repoInfo *repository.RepositoryInfo
+		var searchPath string
 		var token string
-		switch repoInfo.Type {
-		case repository.GitHub:
-			token = req.GitHubToken
-		case repository.GitLab:
-			token = req.GitLabToken
-		}
+		var isLocal bool
 
-		if repoInfo.AmbiguousPath != "" {
-			log.Printf("Resolving ambiguous path: %s", repoInfo.AmbiguousPath)
-			branch, path, err := repository.ResolveBranchAndPath(repoInfo, repoInfo.AmbiguousPath, token)
+		if localEnabled && validation.IsLocalPath(req.URL) {
+			// Local path flow
+			resolvedPath, err := validation.ValidateLocalPath(req.URL)
 			if err != nil {
-				respondError(w, http.StatusBadRequest, fmt.Sprintf("failed to resolve branch: %v", err))
+				respondError(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			repoInfo.Ref = branch
-			repoInfo.Path = path
-			log.Printf("✅ Resolved: branch=%s, path=%s", branch, path)
-		}
+			log.Printf("Analyzing local repository: %s", truncateForLog(resolvedPath, 256))
+			repoInfo, err = repository.DetectLocalRepository(resolvedPath)
+			if err != nil {
+				respondError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			searchPath = repoInfo.Path
+			isLocal = true
+		} else {
+			// Remote URL flow
+			if err := validation.ValidateAnalyzeURL(req.URL); err != nil {
+				respondError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			log.Printf("Analyzing repository: %s", truncateForLog(req.URL, 256))
 
-		searchPath := repoInfo.Path
+			var err error
+			repoInfo, err = repository.DetectRepository(req.URL, "")
+			if err != nil {
+				respondError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			log.Printf("✅ Detected: %s", repoInfo.String())
+
+			switch repoInfo.Type {
+			case repository.GitHub:
+				token = req.GitHubToken
+			case repository.GitLab:
+				token = req.GitLabToken
+			}
+
+			if repoInfo.AmbiguousPath != "" {
+				log.Printf("Resolving ambiguous path: %s", repoInfo.AmbiguousPath)
+				branch, path, err := repository.ResolveBranchAndPath(repoInfo, repoInfo.AmbiguousPath, token)
+				if err != nil {
+					respondError(w, http.StatusBadRequest, fmt.Sprintf("failed to resolve branch: %v", err))
+					return
+				}
+				repoInfo.Ref = branch
+				repoInfo.Path = path
+				log.Printf("✅ Resolved: branch=%s, path=%s", branch, path)
+			}
+
+			searchPath = repoInfo.Path
+		}
+		log.Printf("✅ Detected: %s", repoInfo.String())
 
 		f, err := fetcher.NewFetcher(repoInfo, token)
 		if err != nil {
@@ -166,9 +283,12 @@ func handleAnalyze(store storage.Storage, caCollector *cacert.Collector) http.Ha
 		graph.ID = uuid.New().String()
 		graph.Created = time.Now().Format(time.RFC3339)
 
-		// Collect CA certs from all unique hosts in the overlay stack (for Argo CD).
-		// Runs once after analysis; bundle is stored with the graph.
-		if caCollector != nil {
+		if isLocal {
+			graph.LocalBranch = repoInfo.Ref
+			graph.LocalRootPath = repoInfo.RootPath
+			// Skip CA bundle for local repos; it would be incomplete (local may reference remote overlays).
+		} else if caCollector != nil {
+			// Collect CA certs from all unique hosts in the overlay stack (for Argo CD).
 			caCollector.CollectAndAttach(graph)
 		}
 
@@ -332,7 +452,13 @@ func handleBuildNode(store storage.Storage) http.HandlerFunc {
 		}
 
 		b := build.NewBuilder(req.GitHubToken, req.GitLabToken)
-		yamlOut, err := b.Build(decodedNodeID, baseURL)
+		localRoot := ""
+		if graph.LocalRootPaths != nil && graph.LocalRootPaths[decodedNodeID] != "" {
+			localRoot = graph.LocalRootPaths[decodedNodeID]
+		} else if graph.LocalRootPath != "" {
+			localRoot = graph.LocalRootPath
+		}
+		yamlOut, err := b.Build(decodedNodeID, baseURL, localRoot)
 		if err != nil {
 			log.Printf("Build failed for node %s: %v", decodedNodeID, err)
 			respondError(w, http.StatusUnprocessableEntity, "Build failed")
