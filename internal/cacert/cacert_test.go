@@ -1,7 +1,9 @@
 package cacert
 
 import (
+	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"testing"
 
 	"github.com/cjeanner/kustomap/internal/types"
@@ -103,4 +105,81 @@ func TestCertFingerprint(t *testing.T) {
 	if fp != fp2 {
 		t.Errorf("certFingerprint not deterministic: %q != %q", fp, fp2)
 	}
+}
+
+// TestBundleTrustedForConnection validates that the built CA bundle from CollectAndAttach
+// can be used as the sole trust store for a fresh TLS connection to github.com.
+// This end-to-end test fetches the full chain from api.github.com, builds the bundle,
+// then reconnects using only that bundle—no system roots—to ensure it is properly trusted.
+func TestBundleTrustedForConnection(t *testing.T) {
+	graph := &types.Graph{
+		BaseURLs: map[string]string{"node1": "https://github.com"},
+	}
+	c := NewCollector(DefaultTTL)
+	c.CollectAndAttach(graph)
+
+	if graph.CABundle == "" {
+		t.Fatal("CollectAndAttach produced an empty CA bundle")
+	}
+
+	pool := x509.NewCertPool()
+	for block, rest := pem.Decode([]byte(graph.CABundle)); block != nil; block, rest = pem.Decode(rest) {
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatalf("parsing bundle cert: %v", err)
+		}
+		pool.AddCert(cert)
+	}
+
+	cfg := &tls.Config{
+		RootCAs:    pool,
+		ServerName: "api.github.com",
+	}
+	conn, err := tls.Dial("tcp", "api.github.com:443", cfg)
+	if err != nil {
+		t.Fatalf("TLS dial with built bundle failed: %v", err)
+	}
+	defer conn.Close()
+
+	t.Logf("TLS connection succeeded using built CA bundle")
+}
+
+// TestBundleRejectsOtherHosts validates that a bundle built for github.com cannot
+// be used to verify other hosts. Using the same bundle to connect to www.google.com
+// must fail, since the bundle only contains the CA chain for github.com.
+func TestBundleRejectsOtherHosts(t *testing.T) {
+	graph := &types.Graph{
+		BaseURLs: map[string]string{"node1": "https://github.com"},
+	}
+	c := NewCollector(DefaultTTL)
+	c.CollectAndAttach(graph)
+
+	if graph.CABundle == "" {
+		t.Fatal("CollectAndAttach produced an empty CA bundle")
+	}
+
+	pool := x509.NewCertPool()
+	for block, rest := pem.Decode([]byte(graph.CABundle)); block != nil; block, rest = pem.Decode(rest) {
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatalf("parsing bundle cert: %v", err)
+		}
+		pool.AddCert(cert)
+	}
+
+	cfg := &tls.Config{
+		RootCAs:    pool,
+		ServerName: "www.google.com",
+	}
+	_, err := tls.Dial("tcp", "www.google.com:443", cfg)
+	if err == nil {
+		t.Fatal("TLS dial to www.google.com with github.com bundle should have failed, got nil error")
+	}
+	t.Logf("TLS correctly rejected www.google.com: %v", err)
 }
