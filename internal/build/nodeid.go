@@ -19,23 +19,14 @@ type NodeIDParts struct {
 
 // ParseNodeID parses a node ID into repo type, owner, repo, path and ref.
 // Returns an error if the format is invalid.
+// Formats: github:owner/repo/path@ref, gitlab:owner/repo/path@ref, local:path@ref
 func ParseNodeID(nodeID string) (*NodeIDParts, error) {
 	colon := strings.Index(nodeID, ":")
 	if colon <= 0 || colon == len(nodeID)-1 {
-		return nil, fmt.Errorf("invalid node ID: missing or invalid type prefix (expected type:owner/repo/path@ref)")
+		return nil, fmt.Errorf("invalid node ID: missing or invalid type prefix (expected type:owner/repo/path@ref or local:path@ref)")
 	}
 	typStr := nodeID[:colon]
 	rest := nodeID[colon+1:]
-
-	var repoType repository.RepositoryType
-	switch typStr {
-	case "github":
-		repoType = repository.GitHub
-	case "gitlab":
-		repoType = repository.GitLab
-	default:
-		return nil, fmt.Errorf("unsupported repository type in node ID: %s", typStr)
-	}
 
 	at := strings.LastIndex(rest, "@")
 	if at < 0 {
@@ -45,6 +36,24 @@ func ParseNodeID(nodeID string) (*NodeIDParts, error) {
 	ref := rest[at+1:]
 	if ref == "" {
 		return nil, fmt.Errorf("invalid node ID: empty ref")
+	}
+
+	if typStr == "local" {
+		return &NodeIDParts{
+			Type: repository.Local,
+			Path: strings.Trim(beforeRef, "/"),
+			Ref:  ref,
+		}, nil
+	}
+
+	var repoType repository.RepositoryType
+	switch typStr {
+	case "github":
+		repoType = repository.GitHub
+	case "gitlab":
+		repoType = repository.GitLab
+	default:
+		return nil, fmt.Errorf("unsupported repository type in node ID: %s", typStr)
 	}
 
 	parts := strings.SplitN(beforeRef, "/", 3) // owner, repo, path (path may contain /)
