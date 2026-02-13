@@ -138,5 +138,9 @@ For transparency, all third-party dependencies and their licenses are listed bel
 | [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) | BSD-3-Clause |
 | [golang.org/x/time](https://pkg.go.dev/golang.org/x/time) | BSD-3-Clause |
 | [gopkg.in/yaml.v3](https://github.com/go-yaml/yaml) | Apache-2.0 & MIT |
+| [sigs.k8s.io/kustomize/api](https://pkg.go.dev/sigs.k8s.io/kustomize/api) | Apache-2.0 |
+| [sigs.k8s.io/kustomize/kyaml](https://pkg.go.dev/sigs.k8s.io/kustomize/kyaml) | Apache-2.0 |
+
+**Note on TLS/CA certificates:** The CA certificate collection feature uses only Go's standard library (`crypto/tls`, `crypto/x509`, `crypto/sha256`); no additional external packages are required.
 
 **Note on cytoscape-svg (GPL-3.0):** The SVG export feature uses cytoscape-svg, which is the only GPL-3.0 dependency. GPL-3.0 is not compatible with distributing a combined work under Apache-2.0 only. If you need strict Apache-2.0 compatibility (e.g. for distribution or inclusion in Apache-licensed works), be aware that using the SVG export in this application may implicate GPL-3.0 for that combined use.
