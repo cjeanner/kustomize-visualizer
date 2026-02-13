@@ -67,7 +67,12 @@ func TestServerListensOnPort(t *testing.T) {
 
 	store := storage.NewMemoryStorage()
 	webRoot, _ := fs.Sub(webFS, "web")
-	r := server.New(store, webRoot, nil)
+	// server.New(store, webRoot, caCollector, cfg) parameters:
+	//   store: graph storage
+	//   webRoot: embedded web assets (HTML, JS, CSS)
+	//   nil: caCollector (CA cert collection for Argo CD; skip in test)
+	//   nil: cfg (LocalEnabled=false, Port=3000)
+	r := server.New(store, webRoot, nil, nil)
 	addr := ":" + strconv.Itoa(portNum)
 	listener, err = net.Listen("tcp", addr)
 	if err != nil {
