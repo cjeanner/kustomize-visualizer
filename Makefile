@@ -4,7 +4,7 @@ DESTDIR ?= $(HOME)
 BINDIR  ?= $(DESTDIR)/.bin
 UNITDIR ?= $(DESTDIR)/.config/systemd/user
 
-.PHONY: build install install-binary install-systemd uninstall
+.PHONY: build install install-local install-binary install-systemd uninstall
 .DEFAULT_GOAL := build
 
 build:
@@ -27,9 +27,20 @@ install-binary: build
 	@cp "$(BINARY)" "$(BINDIR)/$(BINARY)"
 	@echo "Installed $(BINARY) to $(BINDIR)/$(BINARY)"
 
+install-local: build install-binary
+	@mkdir -p "$(UNITDIR)"
+	@sed 's|%BINDIR%|$(BINDIR)|g; s|%EXTRA_ARGS%| -enable-local|g' install/$(BINARY).service.in > "$(UNITDIR)/$(BINARY).service"
+	@echo "Installed systemd user unit (local mode) to $(UNITDIR)/$(BINARY).service"
+	@echo ""
+	@echo "Enable and start with local repository support:"
+	@echo "  systemctl --user daemon-reload"
+	@echo "  systemctl --user enable --now $(BINARY).service"
+	@echo ""
+	@echo "Then open http://localhost:3000 and use Browse to select paths under \$$HOME"
+
 install-systemd:
 	@mkdir -p "$(UNITDIR)"
-	@sed 's|%BINDIR%|$(BINDIR)|g' install/$(BINARY).service.in > "$(UNITDIR)/$(BINARY).service"
+	@sed 's|%BINDIR%|$(BINDIR)|g; s|%EXTRA_ARGS%||g' install/$(BINARY).service.in > "$(UNITDIR)/$(BINARY).service"
 	@echo "Installed systemd user unit to $(UNITDIR)/$(BINARY).service"
 
 uninstall:

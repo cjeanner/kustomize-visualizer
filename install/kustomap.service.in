@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%BINDIR%/kustomap
+ExecStart=%BINDIR%/kustomap%EXTRA_ARGS%
 Restart=on-failure
 RestartSec=5
 
