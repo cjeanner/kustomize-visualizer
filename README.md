@@ -10,9 +10,11 @@ A web application to visualize and explore Kustomize overlay structures in GitOp
 
 - **Visual graph**: Interactive dependency tree of bases, overlays, components, and resources (Cytoscape.js in the frontend).
 - **Build overlay**: In the node details sidebar (ID, Type, Path block), a *Build overlay* button is shown for overlay/resource nodes (not components). Click it to build the overlay using the kustomize library (no `kustomize` binary required) and view the resulting YAML in a fullscreen-style modal.
-- **Sources**: GitHub, GitLab (URL + optional tokens), or local directory via browser File System API.
+- **Sources**: GitHub, GitLab (URL + optional tokens), or **local directories** under `$HOME` when running with `-enable-local`.
 - **API**: The Go server exposes a REST API used by the web UI:
-  - `POST /api/v1/analyze` — submit a repo URL (optional `github_token` / `gitlab_token`); returns a graph `id`.
+  - `GET /api/v1/config` — returns `{ "local_enabled": bool, "port": int }`.
+  - `POST /api/v1/analyze` — submit a repo URL or local path (optional `github_token` / `gitlab_token`); returns a graph `id`.
+  - `POST /api/v1/browse` — browse local directories under `$HOME` (body `{ "path": "/full/path" }`); returns an array of subdirectory paths. Requires `-enable-local`.
   - `GET /api/v1/graph/{id}` — fetch the analyzed graph.
   - `GET /api/v1/node/{graphID}/{nodeID}` — fetch node details.
   - `POST /api/v1/node/{graphID}/{nodeID}/build` — build the overlay for that node using the kustomize Go API (same result as `kustomize build`; the kustomize binary is *not* required on the path). Optional body `{ "github_token", "gitlab_token" }`; returns `{ "yaml": "..." }`.
@@ -56,6 +58,21 @@ systemctl --user enable --now kustomap.service
 
 Open **http://localhost:3000**. To change the port, edit `~/.config/systemd/user/kustomap.service` and add e.g. `Environment=PORT=8080` under `[Service]`, then `systemctl --user daemon-reload` and `systemctl --user restart kustomap.service`.
 
+For **local repository support** (paths under `$HOME`), use the `install-local` target:
+
+```bash
+make install-local
+```
+
+This installs `kustomap.service` with the `-enable-local` flag (same unit file, different flags). Enable and start it:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now kustomap.service
+```
+
+With local mode, the UI shows a **Browse** button to select directories under `$HOME`, and supports cross-repo references (e.g. components in sibling repos).
+
 Uninstall:
 
 ```bash
@@ -78,6 +95,9 @@ go build -o kustomap .
 
 # Optional: custom port (default 3000, or set PORT)
 go run . -port 8080
+
+# Optional: enable local repository browsing (paths under $HOME)
+go run . -enable-local
 ```
 
 Then open **http://localhost:3000**.
