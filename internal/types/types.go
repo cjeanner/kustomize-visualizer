@@ -18,6 +18,18 @@ type Graph struct {
 	CABundleValid bool `json:"ca_bundle_valid,omitempty"`
 	// CABundleError is set when bundle validation failed (e.g. host unreachable or cert mismatch).
 	CABundleError string `json:"ca_bundle_error,omitempty"`
+
+	// LocalBranch is the git branch when the graph is from a local repository.
+	// Empty for remote repos. Used for display in the UI.
+	LocalBranch string `json:"local_branch,omitempty"`
+
+	// LocalRootPath is the absolute path to the repository root when the graph is from a local repo.
+	// Used by the build endpoint to run kustomize on the local filesystem. Not exposed to the client.
+	LocalRootPath string `json:"-"`
+
+	// LocalRootPaths maps node ID -> root path for nodes in local repos other than the entry.
+	// When building a node, check this first; if unset, use LocalRootPath (entry repo).
+	LocalRootPaths map[string]string `json:"-"`
 }
 
 // Element can be a node or an edge
