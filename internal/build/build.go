@@ -40,45 +40,62 @@ func NewBuilder(githubToken, gitlabToken string) *Builder {
 
 // Build fetches the repo for the given node ID, runs kustomize build at the node path,
 // and returns the built YAML as a string. The node ID must be in format
-// type:owner/repo/path@ref (e.g. github:foo/bar/deploy/overlay@main).
-// baseURL is the repo base URL (e.g. https://gitlab.example.com) for self-hosted GitLab/GitHub; empty for public github.com/gitlab.com.
-func (b *Builder) Build(nodeID, baseURL string) (yamlOut string, err error) {
+// type:owner/repo/path@ref (e.g. github:foo/bar/deploy/overlay@main) or local:path@ref.
+// baseURL is the repo base URL for remote; for local nodes, localRootPath must be set.
+func (b *Builder) Build(nodeID, baseURL, localRootPath string) (yamlOut string, err error) {
 	parts, err := ParseNodeID(nodeID)
 	if err != nil {
 		return "", fmt.Errorf("parse node ID: %w", err)
 	}
 
-	dir, err := os.MkdirTemp("", "kustomap-build-*")
-	if err != nil {
-		return "", fmt.Errorf("create temp dir: %w", err)
-	}
-	defer func() {
-		if rerr := os.RemoveAll(dir); rerr != nil {
-			log.Printf("warning: remove temp dir %s: %v", dir, rerr)
+	var buildPath string
+
+	if parts.Type == repository.Local {
+		if localRootPath == "" {
+			return "", fmt.Errorf("local build requires localRootPath")
 		}
-	}()
+		buildPath = filepath.Join(localRootPath, parts.Path)
+		buildPath = filepath.Clean(buildPath)
+		// Ensure path is under localRootPath (no escape)
+		rootAbs, _ := filepath.Abs(localRootPath)
+		buildAbs, _ := filepath.Abs(buildPath)
+		rootPrefix := rootAbs + string(filepath.Separator)
+		if buildAbs != rootAbs && !strings.HasPrefix(buildAbs, rootPrefix) {
+			return "", fmt.Errorf("invalid build path")
+		}
+	} else {
+		dir, err := os.MkdirTemp("", "kustomap-build-*")
+		if err != nil {
+			return "", fmt.Errorf("create temp dir: %w", err)
+		}
+		defer func() {
+			if rerr := os.RemoveAll(dir); rerr != nil {
+				log.Printf("warning: remove temp dir %s: %v", dir, rerr)
+			}
+		}()
 
-	archivePath, err := b.downloadArchive(dir, parts, baseURL)
-	if err != nil {
-		return "", err
-	}
+		archivePath, err := b.downloadArchive(dir, parts, baseURL)
+		if err != nil {
+			return "", err
+		}
 
-	rootDir, err := extractTarGz(archivePath, dir)
-	if err != nil {
-		return "", fmt.Errorf("extract archive: %w", err)
-	}
+		rootDir, err := extractTarGz(archivePath, dir)
+		if err != nil {
+			return "", fmt.Errorf("extract archive: %w", err)
+		}
 
-	buildPath := filepath.Join(dir, rootDir, parts.Path)
-	buildPath = filepath.Clean(buildPath)
-	if parts.Path == "" {
-		buildPath = filepath.Join(dir, rootDir)
-	}
+		buildPath = filepath.Join(dir, rootDir, parts.Path)
+		buildPath = filepath.Clean(buildPath)
+		if parts.Path == "" {
+			buildPath = filepath.Join(dir, rootDir)
+		}
 
-	// Ensure path is under dir (no escape)
-	absDir, _ := filepath.Abs(dir)
-	absBuild, _ := filepath.Abs(buildPath)
-	if !strings.HasPrefix(absBuild, absDir) {
-		return "", fmt.Errorf("invalid build path")
+		// Ensure path is under dir (no escape)
+		absDir, _ := filepath.Abs(dir)
+		absBuild, _ := filepath.Abs(buildPath)
+		if !strings.HasPrefix(absBuild, absDir) {
+			return "", fmt.Errorf("invalid build path")
+		}
 	}
 
 	fs := filesys.MakeFsOnDisk()

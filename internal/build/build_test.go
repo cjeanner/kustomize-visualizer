@@ -11,7 +11,7 @@ import (
 
 func TestBuild_InvalidNodeID_ReturnsParseError(t *testing.T) {
 	b := NewBuilder("", "")
-	_, err := b.Build("not-a-valid-node-id", "")
+	_, err := b.Build("not-a-valid-node-id", "", "")
 	if err == nil {
 		t.Fatal("Build() expected error for invalid node ID")
 	}
@@ -22,7 +22,7 @@ func TestBuild_InvalidNodeID_ReturnsParseError(t *testing.T) {
 
 func TestBuild_InvalidNodeID_WithBaseURL_ReturnsParseError(t *testing.T) {
 	b := NewBuilder("", "")
-	_, err := b.Build("missing-at:foo/bar/path", "https://gitlab.example.com")
+	_, err := b.Build("missing-at:foo/bar/path", "https://gitlab.example.com", "")
 	if err == nil {
 		t.Fatal("Build() expected error for invalid node ID")
 	}
